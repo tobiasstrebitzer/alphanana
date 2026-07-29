@@ -16,16 +16,6 @@ Image models can't draw transparency. alphanana stops asking them to.
 
 </div>
 
-```
-$ npx alphanana generate "a small apothecary glass bottle, amber elixir" --out potion.png
-> [1/3] generating subject on white...
-> [2/3] edit to black...
-        matte: roughness=0.0008 stray=0.0008 border=0.000 opaque=0.151 checker=0.0378/0.38
-        + alignment guard passed
-> [3/3] writing transparent PNG...
-+ wrote potion.png
-```
-
 ## Quickstart
 
 Requires Node ≥ 20.3 and a Gemini API key in `GEMINI_API_KEY` (or `GOOGLE_API_KEY`),
@@ -42,6 +32,13 @@ Install it properly when you want the library or a pinned version:
 ```sh
 npm install alphanana
 ```
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/tobiasstrebitzer/alphanana/master/docs/demo.svg" alt="alphanana generating a transparent PNG: render on white, edit to black, guard the matte, write the result" width="900">
+</div>
+
+Progress goes to stderr and the output path to stdout, so a run pipes cleanly. The `matte:`
+line is the guard reporting what it measured — see [Highlights](#highlights).
 
 ### Set up with Claude
 
@@ -220,6 +217,15 @@ Layout: `src/matte.ts` (the alpha solve and the guard statistics — the unit-te
 `src/gemini.ts` (the two model calls), `src/generate.ts` (one asset: render, matte, guard,
 re-roll), `src/variants.ts` (candidates and contact sheets), `src/batch.ts` (manifests and
 the report), `src/config.ts` + `src/env.ts` (schema and key discovery), `src/cli.ts`.
+
+The README's terminal demo is a hand-authored asciicast rather than a real recording, so it
+stays reproducible without spending API calls. Regenerate it with:
+
+```sh
+node docs/make-cast.mjs                                   # writes docs/demo.cast
+npx svg-term-cli --in docs/demo.cast --out docs/demo.svg \
+  --width 92 --height 9 --padding 18                      # then set .a{fill:#0b0e1a}
+```
 
 Releases are automated: pushing a version bump to `master` publishes to npm through
 [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC — no tokens) with a
