@@ -1,0 +1,13 @@
+{
+  "name": "alphanana",
+  "owner": {
+    "name": "Tobias Strebitzer"
+  },
+  "plugins": [
+    {
+      "name": "alphanana",
+      "source": "./",
+      "description": "Transparent PNG generation with Gemini image models (nano banana): exact difference-matte alpha, quality guards, style-locked variants and manifest-driven batches."
+    }
+  ]
+}

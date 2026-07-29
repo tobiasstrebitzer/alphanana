@@ -1,0 +1,5 @@
+# Single-package repo; this file only carries pnpm settings.
+# Postinstall build scripts: true = run (native/compile steps).
+allowBuilds:
+  esbuild: true
+  sharp: true
