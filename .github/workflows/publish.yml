@@ -1,0 +1,81 @@
+# Publishes to npm via trusted publishing (OIDC) - no NPM_TOKEN anywhere.
+#
+# Fires on every push to master but only actually publishes when package.json carries a
+# version that is not on the registry yet, so a normal commit is a no-op and bumping the
+# version is what ships. Re-running a merged commit is safe: the version is already
+# published by then and the job skips.
+#
+# The npm side of the trust relationship is pinned to THIS filename (publish.yml) - renaming
+# or moving this file breaks publishing until the trusted publisher on npmjs.com is updated
+# to match.
+name: Publish
+
+on:
+  push:
+    branches: [master]
+
+# Never let two pushes publish concurrently; the later one waits and then finds the version
+# already taken rather than racing it.
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest # trusted publishing does not work on self-hosted runners
+    permissions:
+      contents: read
+      id-token: write # mints the OIDC token npm exchanges for a short-lived publish grant
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24 # OIDC needs node >= 22.14
+          cache: pnpm
+
+      # Node 24 already ships npm 11.x, but the floor for OIDC is exact enough to be worth
+      # pinning rather than inheriting whatever the runner image happens to carry.
+      - name: Ensure npm supports trusted publishing
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - run: pnpm install --frozen-lockfile
+
+      # The same gates as CI. Publishing is irreversible, so this does not trust that CI
+      # already went green on this commit.
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+      - name: Has this version already been published?
+        id: check
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$NAME@$VERSION is already on npm - nothing to publish."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$NAME@$VERSION is new - publishing."
+          fi
+
+      # No NODE_AUTH_TOKEN and no --provenance: the OIDC exchange handles auth, and npm
+      # attaches provenance automatically when it publishes this way.
+      # `prepack` (pnpm clean && pnpm build) rebuilds from a clean tree as part of this.
+      - name: Publish
+        if: steps.check.outputs.published == 'false'
+        run: npm publish
+
+      - name: Summary
+        run: |
+          if [ "${{ steps.check.outputs.published }}" = "false" ]; then
+            echo "Published \`${{ steps.check.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Skipped - \`${{ steps.check.outputs.version }}\` already on npm" >> "$GITHUB_STEP_SUMMARY"
+          fi

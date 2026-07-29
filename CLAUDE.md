@@ -32,17 +32,26 @@ There is no aggregate `check` script — run `pnpm lint && pnpm typecheck` toget
 
 ## Publishing
 
-`files: ["build"]` is the whitelist — the tarball is build output plus
-`package.json`/`README`/`LICENSE` only. Sourcemaps are off deliberately: they embed
-`sourcesContent`, which shipped the entire TS source in every install.
+Automated. `.github/workflows/publish.yml` publishes to npm on every push to `master`
+whose `package.json` version is not on the registry yet — so **bumping the version is
+what ships**, and an ordinary commit is a no-op.
+
+- Auth is npm **trusted publishing** (OIDC): no `NPM_TOKEN` exists anywhere, and npm
+  attaches a provenance attestation automatically. The trust relationship on npmjs.com is
+  pinned to the filename `publish.yml` — renaming or moving that file breaks publishing.
+- The publish step runs `npm publish`, not `pnpm publish`: pnpm has no OIDC support yet
+  (pnpm#9812) and pnpm 11 404s on OIDC (pnpm#11513). pnpm is still used for install/build.
+- `files: ["build"]` is the whitelist — the tarball is build output plus
+  `package.json`/`README`/`LICENSE` only. Sourcemaps are off deliberately: they embed
+  `sourcesContent`, which shipped the entire TS source in every install.
 
 ## Wrapup Config
 
 - check: `pnpm lint && pnpm typecheck`
 - test: `pnpm test`
 - push: yes
-- version_bump: no (bump manually when releasing)
-- publish: yes (manual — prompt to publish, never run it automatically)
+- version_bump: no (bump manually when releasing — the bump IS the release trigger)
+- publish: automatic on push to master via publish.yml; never run npm/pnpm publish by hand
 - docs: single CLAUDE.md + README
 - frontend_smoke: n/a (no frontend)
 - co_authored_by: no (already disabled globally in ~/.claude/settings.json)
