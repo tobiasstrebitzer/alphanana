@@ -29,6 +29,14 @@ There is no aggregate `check` script — run `pnpm lint && pnpm typecheck` toget
 - `skills/alphanana/SKILL.md` + `.claude-plugin/` — the Claude Code plugin. The skill
   drives the published CLI via `npx -y alphanana`, so it is distributed through the
   plugin marketplace (git), never through the npm tarball.
+- `docs/` — README assets only, outside the `files` whitelist so none of it ships.
+  `make-casts.mjs` regenerates both terminal demos; see README > Development for the
+  `svg-term-cli` invocations and the two manual post-edits it needs. The casts are
+  hand-authored on purpose — a real recording would cost a paid generate run per tweak.
+
+`.claude-plugin/plugin.json` carries its **own** version and is kept in lockstep with
+`package.json`. `npm version` does not touch it — bump both, or the marketplace and the
+npm package disagree.
 
 ## Publishing
 

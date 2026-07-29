@@ -1,6 +1,6 @@
 {
   "name": "alphanana",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Transparent PNG generation with Gemini image models (nano banana): exact difference-matte alpha, quality guards, style-locked variants and manifest-driven batches.",
   "keywords": [
     "gemini",
