@@ -5,7 +5,7 @@ export default defineConfig({
   outDir: 'build',
   format: ['esm'],
   dts: true,
-  sourcemap: true,
+  sourcemap: false,
   clean: true,
   deps: { neverBundle: [/^[^./]/] },
 })
