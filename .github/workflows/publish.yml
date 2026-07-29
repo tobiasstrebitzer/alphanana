@@ -26,6 +26,9 @@ jobs:
     permissions:
       contents: read
       id-token: write # mints the OIDC token npm exchanges for a short-lived publish grant
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      released: ${{ steps.check.outputs.published == 'false' }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -79,3 +82,30 @@ jobs:
           else
             echo "Skipped - \`${{ steps.check.outputs.version }}\` already on npm" >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  # Split out so the job holding publish rights cannot rewrite the repository, and the job
+  # that can push tags cannot publish. Only runs when `publish` actually released something.
+  tag:
+    needs: publish
+    if: needs.publish.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the release tag; deliberately no id-token here
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Tag v${{ needs.publish.outputs.version }}
+        env:
+          TAG: v${{ needs.publish.outputs.version }}
+        run: |
+          # A re-run publishes nothing (the version gate skips), so this job would not run
+          # either - but check anyway rather than failing a green release on a duplicate tag.
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::notice::$TAG already exists - leaving it alone."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "$TAG"
+          echo "Tagged \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
