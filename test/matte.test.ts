@@ -115,11 +115,9 @@ describe('checkerRatio', () => {
     expect(stats.checkerRatio).toBeLessThan(DEFAULT_MAX_CHECKER)
   })
 
-  // Known limit, recorded so it is not rediscovered as a bug: this is a contrast-churn
-  // heuristic with no notion of periodicity, so any dense high-frequency texture reads as a
-  // checkerboard. Nothing in the themes generates one, and the guard's answer to a trip is
-  // "re-roll and look", not "discard".
-  it('is a heuristic: dense periodic texture reads as a false positive', () => {
+  // Dense high-frequency art still trips checkerRatio on its own - that stat is contrast
+  // only. checkerRegularity is what keeps it from being an accusation; see below.
+  it('dense periodic texture still trips the contrast stat alone', () => {
     const stats = analyzeMatte(
       image(SIZE, SIZE, (x, y) => {
         const d = Math.hypot(x - SIZE / 2, y - SIZE / 2)
@@ -128,5 +126,135 @@ describe('checkerRatio', () => {
       }),
     )
     expect(stats.checkerRatio).toBeGreaterThan(DEFAULT_MAX_CHECKER)
+  })
+})
+
+describe('checkerRegularity', () => {
+  const SIZE = 256
+  const DEFAULT_MAX_CHECKER = 0.03
+  const DEFAULT_MIN_REGULARITY = 0.45
+  /** The guard's actual test: high contrast AND on a lattice. */
+  const looksCheckered = (s: { checkerRatio: number; checkerRegularity: number }) =>
+    s.checkerRatio > DEFAULT_MAX_CHECKER && s.checkerRegularity > DEFAULT_MIN_REGULARITY
+
+  const checker = (a: number, b: number, square = 16) => (x: number, y: number) =>
+    ((Math.floor(x / square) + Math.floor(y / square)) % 2 === 0 ? [a, a, a, 255] : [b, b, b, 255]) as [
+      number,
+      number,
+      number,
+      number,
+    ]
+
+  // A lattice saturates the stat: every transition lands on the same width/square columns,
+  // whatever the palette or square size.
+  it.each([
+    ['#fff/#ccc square 8', 255, 204, 8],
+    ['#fff/#ccc square 16', 255, 204, 16],
+    ['#fff/#ccc square 32', 255, 204, 32],
+    ['#fff/#ccc square 64', 255, 204, 64],
+    ['#999/#666 square 16', 153, 102, 16],
+    ['black/white square 16', 255, 0, 16],
+  ])('scores a %s checkerboard as a lattice', (_label, a, b, square) => {
+    const stats = analyzeMatte(image(SIZE, SIZE, checker(a, b, square)))
+    expect(stats.checkerRegularity).toBeGreaterThan(DEFAULT_MIN_REGULARITY)
+  })
+
+  it.each([
+    ['#fff/#ccc square 8', 255, 204, 8],
+    ['#fff/#ccc square 16', 255, 204, 16],
+    ['#999/#666 square 16', 153, 102, 16],
+    ['black/white square 16', 255, 0, 16],
+  ])('convicts a %s checkerboard', (_label, a, b, square) => {
+    expect(looksCheckered(analyzeMatte(image(SIZE, SIZE, checker(a, b, square))))).toBe(true)
+  })
+
+  // Pre-existing gap, unchanged by checkerRegularity and recorded so it is not mistaken for
+  // one: big squares mean few transitions, so checkerRatio falls under maxChecker on its own
+  // (square 32 -> 0.029, square 64 -> 0.010, against a 0.03 bar) and the lattice test never
+  // gets a say. Closing it would mean convicting on regularity at a lower contrast, which
+  // also convicts genuinely grid-shaped subjects - a chessboard, a window grille, woven cloth.
+  it.each([
+    ['square 32', 32],
+    ['square 64', 64],
+  ])('does not reach the contrast bar for a coarse %s checkerboard', (_label, square) => {
+    const stats = analyzeMatte(image(SIZE, SIZE, checker(255, 204, square)))
+    expect(stats.checkerRegularity).toBeGreaterThan(DEFAULT_MIN_REGULARITY) // the lattice is seen
+    expect(stats.checkerRatio).toBeLessThan(DEFAULT_MAX_CHECKER) // but contrast never accuses
+    expect(looksCheckered(stats)).toBe(false)
+  })
+
+  it('still convicts a checkerboard painted into a frame opening', () => {
+    const stats = analyzeMatte(
+      image(SIZE, SIZE, (x, y) => {
+        const inHole = Math.abs(x - SIZE / 2) < SIZE * 0.22 && Math.abs(y - SIZE / 2) < SIZE * 0.22
+        return inHole ? checker(255, 204)(x, y) : [180, 150, 90, 255]
+      }),
+    )
+    expect(looksCheckered(stats)).toBe(true)
+  })
+
+  it('survives a hand-painted checkerboard jittered by half a square', () => {
+    // Deterministic per-cell offset - a model copying the pattern freehand will not be exact.
+    const hash = (x: number, y: number) => {
+      let h = (x * 374761393 + y * 668265263) >>> 0
+      h = ((h ^ (h >>> 13)) * 1274126177) >>> 0
+      return ((h ^ (h >>> 16)) >>> 0) / 4294967296
+    }
+    const stats = analyzeMatte(
+      image(SIZE, SIZE, (x, y) => {
+        const cx = Math.floor(x / 16)
+        const cy = Math.floor(y / 16)
+        const ox = (hash(cx, cy) - 0.5) * 16
+        const oy = (hash(cy, cx) - 0.5) * 16
+        return checker(255, 204)(Math.round(x + ox), Math.round(y + oy))
+      }),
+    )
+    expect(looksCheckered(stats)).toBe(true)
+  })
+
+  // The regression this stat exists for: radial art alternates facets exactly the way
+  // checkerRatio looks for, and used to burn every retry on a clean matte.
+  it.each([
+    [
+      'concentric rings',
+      (x: number, y: number) => {
+        const d = Math.hypot(x - SIZE / 2, y - SIZE / 2)
+        const v = Math.floor(d / 5) % 2 === 0 ? 220 : 120
+        return [v, Math.round(v * 0.8), Math.round(v * 0.5), 255] as [number, number, number, number]
+      },
+    ],
+    [
+      'a radial starburst (compass rose)',
+      (x: number, y: number) => {
+        const dx = x - SIZE / 2
+        const dy = y - SIZE / 2
+        if (Math.hypot(dx, dy) > SIZE * 0.45) return [0, 0, 0, 0] as [number, number, number, number]
+        const v = Math.floor((Math.atan2(dy, dx) / Math.PI) * 16) % 2 === 0 ? 225 : 110
+        return [v, Math.round(v * 0.8), Math.round(v * 0.45), 255] as [number, number, number, number]
+      },
+    ],
+  ])('does not convict %s', (_label, fill) => {
+    const stats = analyzeMatte(image(SIZE, SIZE, fill))
+    expect(stats.checkerRatio).toBeGreaterThan(DEFAULT_MAX_CHECKER) // contrast alone accuses
+    expect(stats.checkerRegularity).toBeLessThan(DEFAULT_MIN_REGULARITY) // the lattice test acquits
+    expect(looksCheckered(stats)).toBe(false)
+  })
+
+  // Known limit, recorded so it is not rediscovered as a bug: the test keys on axis
+  // alignment, so a rotated painted checkerboard reads as art. Accepted deliberately - the
+  // editor checkerboard a model copies is axis-aligned, and the alternative test that would
+  // catch this (two-tone-ness) convicts flat two-colour art, which is a real subject.
+  it('is a heuristic: a rotated checkerboard is not caught', () => {
+    const stats = analyzeMatte(
+      image(SIZE, SIZE, (x, y) => {
+        const r = (15 * Math.PI) / 180
+        const cx = x - SIZE / 2
+        const cy = y - SIZE / 2
+        const u = cx * Math.cos(r) - cy * Math.sin(r)
+        const v = cx * Math.sin(r) + cy * Math.cos(r)
+        return checker(255, 204)(Math.round(u + SIZE / 2), Math.round(v + SIZE / 2))
+      }),
+    )
+    expect(stats.checkerRegularity).toBeLessThan(DEFAULT_MIN_REGULARITY)
   })
 })

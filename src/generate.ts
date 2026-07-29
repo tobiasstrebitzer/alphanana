@@ -75,16 +75,23 @@ export async function runGenerate(opts: GenerateOptions): Promise<GenerateOutcom
     generation,
   }
 
+  // A painted checkerboard is high-contrast AND on a regular lattice. Contrast alone is not
+  // enough to accuse: radial art (compass rose, sunburst) alternates facets just as hard.
+  const looksCheckered = (s: MatteStats) =>
+    s.checkerRatio > config.guard.maxChecker && s.checkerRegularity > config.guard.minCheckerRegularity
   const passesGuard = (s: MatteStats) =>
     s.roughness <= config.guard.roughness &&
     s.strayRatio <= config.guard.strayRatio &&
     s.borderAlpha <= config.guard.maxBorderAlpha &&
     s.opaqueRatio <= config.guard.maxOpaqueRatio &&
     s.opaqueRatio >= config.guard.minOpaqueRatio &&
-    s.checkerRatio <= config.guard.maxChecker
+    !looksCheckered(s)
   // lower is better - borderAlpha weighted heavily so a real cutout always beats an un-cut
   // (opaque) frame, which otherwise scores ~0 on roughness+strayRatio and looks "best".
-  const score = (s: MatteStats) => s.roughness + s.strayRatio + 2 * s.borderAlpha + 4 * s.checkerRatio
+  // checkerRatio only counts against an attempt once the lattice test agrees it is a
+  // checkerboard, or ranking would just prefer whichever attempt came out least detailed.
+  const score = (s: MatteStats) =>
+    s.roughness + s.strayRatio + 2 * s.borderAlpha + (looksCheckered(s) ? 4 * s.checkerRatio : 0)
 
   const references = opts.reference ?? []
   const refNote = references.length
@@ -130,7 +137,7 @@ export async function runGenerate(opts: GenerateOptions): Promise<GenerateOutcom
     log(
       `        matte: roughness=${stats.roughness.toFixed(4)} stray=${stats.strayRatio.toFixed(4)} ` +
         `border=${stats.borderAlpha.toFixed(3)} opaque=${stats.opaqueRatio.toFixed(3)} ` +
-        `checker=${stats.checkerRatio.toFixed(4)}`,
+        `checker=${stats.checkerRatio.toFixed(4)}/${stats.checkerRegularity.toFixed(2)}`,
     )
     if (!best || score(stats) < score(best.stats)) best = { png: black.png, matte, stats }
     if (passesGuard(stats)) {
@@ -142,7 +149,7 @@ export async function runGenerate(opts: GenerateOptions): Promise<GenerateOutcom
         ? 'background not removed (black edit ~ white frame)'
         : stats.opaqueRatio < config.guard.minOpaqueRatio
           ? 'empty matte (no subject)'
-          : stats.checkerRatio > config.guard.maxChecker
+          : looksCheckered(stats)
             ? 'opening painted as a transparency checkerboard'
             : 'model drifted between frames'
     log(`        x guard failed (${reason}) - re-rolling black edit`)

@@ -44,8 +44,10 @@ guessing.
 
 - **Never write "transparent" in a prompt.** The model paints the grey-and-white editor
   checkerboard instead. Describe an opening as the flat background colour continuing
-  through it unchanged. The guard's `checkerRatio` catches most of these; the prompt is
-  the real fix.
+  through it unchanged. The guard catches most of these (`checkerRatio` for the contrast,
+  `checkerRegularity` for the axis-aligned lattice - it only accuses when both agree, so
+  radial subjects like a compass rose or sunburst are no longer convicted of their own
+  alternating facets); the prompt is still the real fix.
 - **The filled hole is the guard's blind spot.** A frame whose centre was painted solid
   (a "panel", "plate", "paper" fill) passes every stat. Name the fills as negatives in
   the prompt ("NOT a panel, NOT a plate, NOT paper") and verify centre alpha directly on
@@ -53,6 +55,13 @@ guessing.
   for a hollow frame).
 - **Pin glows to the outside.** "A soft glow around the frame" bleeds across the opening;
   say "hugging only the outer edge, never spreading into the empty middle".
+- **Never ask for a cast shadow unless the user wants one baked in.** The default white
+  prompt already refuses drop, contact and offset shadows, because a cast shadow mattes
+  into the asset as a large low-alpha smear that no post-processing can lift back out
+  without eating the antialiased edge with it. Shading *on* the subject's own form is a
+  different thing and is kept. Anything you put in the subject prompt overrides the
+  default, so do not write "sitting on a surface", "grounded" or "with a soft shadow"
+  unless a baked-in shadow is genuinely wanted.
 - **Reword outright refusals.** A prompt that returns "No image in response" across seeds
   is not a transient error - reword the same intent. If one asset fails repeatedly while
   its siblings generate, it is the wording.

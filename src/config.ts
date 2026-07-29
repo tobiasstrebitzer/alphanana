@@ -20,10 +20,15 @@ const DEFAULT_STYLE =
 const DEFAULT_ISOLATION =
   `CRITICAL: this is an isolated cut-out of just the subject described - no room, no walls, no window, no furniture, no floor, no ground, no environment or scenery of any kind behind or around it; nothing but the subject itself on the plain background described above. If the subject has a hole, opening or cut-out in it, the flat background colour must be visible straight through that opening, exactly as it is around the subject. NEVER draw a checkerboard, chequered pattern, grey-and-white grid or any other stand-in for transparency: transparency is produced afterwards from the background colour, so an opening is simply painted in the background colour.`
 
+// Cast shadows are refused by default: they land in the matte as a large, low-alpha smear
+// that is fused into the asset and cannot be removed afterwards without eating the
+// antialiased edge too. Shading ON the subject's own form is a different thing and is kept -
+// without it the render goes flat. A caller who genuinely wants a grounded shadow asks for
+// it in the subject prompt, which is appended after this and overrides it.
 const DEFAULT_WHITE =
-  `Render the subject isolated and centered, floating, with a soft semi-transparent drop shadow directly beneath it. Leave generous margin: the subject together with its glow and shadow must stay well inside the frame and never touch the edges. Background: a perfectly flat, evenly lit, pure solid white #FFFFFF - completely uniform, no gradient, no texture, no floor, no other objects, nothing besides the subject and its own glow and shadow. Any opening or hollow area in the subject shows that same flat pure white through it - never a pattern, never a checkerboard, never a grid.`
+  `Render the subject isolated and centered, floating free against the background. It does NOT rest on any surface, so it casts NO shadow onto the background: no drop shadow, no contact shadow, no offset or long or angled cast shadow, no reflection, no ambient occlusion pooling beneath it. Shading, shadow and highlight ON the subject's own form are expected - keep the form fully modelled, just do not throw anything onto the background. Leave generous margin: the subject must stay well inside the frame and never touch the edges. Background: a perfectly flat, evenly lit, pure solid white #FFFFFF - completely uniform, no gradient, no texture, no floor, no horizon, no other objects, nothing besides the subject itself and any glow it emits. Any opening or hollow area in the subject shows that same flat pure white through it - never a pattern, never a checkerboard, never a grid.`
 const DEFAULT_BLACK =
-  `Replace ONLY the white background with pure, uniform, flat #000000 black. The new background must be completely empty and featureless: NO glow, NO reflection, NO floor, NO gradient, NO light spill, NO ambient lighting, nothing added anywhere. Do not re-light or re-render the scene. Every foreground pixel - the subject, its glow halo, and its soft drop shadow - must stay byte-for-byte identical in position, size, color, and opacity. This is a pure background color swap, nothing else.`
+  `Replace ONLY the white background with pure, uniform, flat #000000 black. The new background must be completely empty and featureless: NO glow, NO reflection, NO floor, NO gradient, NO light spill, NO ambient lighting, nothing added anywhere. Do not re-light or re-render the scene. Every foreground pixel - the subject, and any glow or shadow it does have - must stay byte-for-byte identical in position, size, color, and opacity. This is a pure background color swap, nothing else.`
 
 const modelSchema = z
   .object({
@@ -65,7 +70,8 @@ const backgroundSchema = z
 
 // Alignment guard thresholds (see matte.ts analyzeMatte). maxBorderAlpha / maxOpaqueRatio
 // catch the "background never removed" failure; minOpaqueRatio catches an empty matte;
-// maxChecker catches a hollow opening the model painted as a transparency checkerboard.
+// maxChecker and minCheckerRegularity together catch a hollow opening the model painted as
+// a transparency checkerboard - contrast alone convicts any radial subject, so both must trip.
 const guardSchema = z
   .object({
     roughness: z.number().min(0).max(1).default(0.02),
@@ -80,6 +86,15 @@ const guardSchema = z
      * numbers only mean anything together.
      */
     maxChecker: z.number().min(0).max(1).default(0.03),
+    /**
+     * Second half of the checkerboard test (see MatteStats.checkerRegularity): a matte only
+     * fails when its contrast churn ALSO sits on a regular axis-aligned lattice. Without
+     * this, any radial subject - a compass rose, sunburst, pinwheel - trips maxChecker on
+     * its own alternating facets and burns every retry on a clean matte. 0.45 sits between
+     * measured art (0.211 - 0.313) and the worst surviving checkerboard (0.562, jittered by
+     * half a square); a clean lattice scores 1.000.
+     */
+    minCheckerRegularity: z.number().min(0).max(1).default(0.45),
     maxAttempts: z.number().int().min(1).default(3),
   })
   .prefault({})

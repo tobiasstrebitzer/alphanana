@@ -40,6 +40,18 @@ const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x)
  */
 const CHECKER_CONTRAST = 0.18
 
+/**
+ * Densest share of transition coordinates checkerRegularity measures, per axis.
+ *
+ * An editor checkerboard of square size S puts every one of its transitions on the same
+ * width/S columns, so any sampling fraction at or above 1/S captures all of them and the
+ * stat saturates at 1.0. 0.125 covers squares down to 8px (below that the squares are
+ * smaller than the antialiasing and the pattern stops being a checkerboard anyway), while
+ * still being narrow enough that art scattering transitions evenly scores near it: a
+ * uniform spread scores exactly 0.125, and measured art lands 0.21 - 0.31.
+ */
+const CHECKER_TOP_FRACTION = 0.125
+
 export function differenceMatte(white: RawImage, black: RawImage, opts: { floor?: number } = {}): RawImage {
   if (white.width !== black.width || white.height !== black.height) {
     throw new Error(`Size mismatch: white ${white.width}x${white.height} vs black ${black.width}x${black.height}.`)
@@ -89,6 +101,30 @@ export interface MatteStats {
    * a checkerboard, so treat a trip as "re-roll and look", which is what the guard does.
    */
   checkerRatio: number
+  /**
+   * How much of that contrast churn sits on a regular axis-aligned lattice, 0..1.
+   *
+   * checkerRatio counts hard steps but knows nothing about where they are, so any dense
+   * high-frequency subject trips it - a compass rose, sunburst or pinwheel alternates
+   * light and dark facets exactly the way the stat looks for. What separates the real
+   * failure from that art is position, not contrast: an editor checkerboard puts every
+   * horizontal transition on the same handful of columns and every vertical one on the
+   * same rows, because it IS a grid. Art scatters them across every coordinate.
+   *
+   * So this histograms the coordinate of each transition per axis and reports the share
+   * landing in the densest CHECKER_TOP_FRACTION of coordinates, taking the weaker axis
+   * (a lattice is regular in both; stripes are not a checkerboard). Measured: every
+   * synthetic checkerboard 1.000 regardless of palette, square size or whether it
+   * alternates colour or alpha; four real generated compass roses 0.211 - 0.278;
+   * synthetic radial starburst and concentric rings 0.257 - 0.313. A checkerboard has to
+   * be jittered by half a square before it falls to 0.562, still clear of any art.
+   *
+   * Known limit: this keys on axis alignment, so a *rotated* painted checkerboard reads
+   * as art (5 degrees already drops it to 0.231). That is the accepted trade - the editor
+   * checkerboard models copy is canonically axis-aligned, whereas flat two-tone art that
+   * a rotation-tolerant test would have to accommodate is a real subject.
+   */
+  checkerRegularity: number
 }
 
 // Detects the difference-matting failure mode: when the generator re-rendered or
@@ -183,20 +219,44 @@ export function analyzeMatte(matte: RawImage): MatteStats {
     const lum = (data[i]! * 0.299 + data[i + 1]! * 0.587 + data[i + 2]! * 0.114) / 255
     return lum * (A[y * width + x]! / 255)
   }
+  // Same sweep also tallies WHERE each transition falls, per axis, for checkerRegularity:
+  // a lattice stacks them onto a few coordinates, art spreads them over all of them.
   let interiorJumps = 0
   let interiorPairs = 0
+  let colTotal = 0
+  let rowTotal = 0
+  const colHits = new Float64Array(width)
+  const rowHits = new Float64Array(height)
   for (let y = iy0; y < iy1; y += 1) {
     for (let x = ix0; x < ix1; x += 1) {
       const v = value(x, y)
       if (x + 1 < ix1) {
         interiorPairs += 1
-        if (Math.abs(v - value(x + 1, y)) > CHECKER_CONTRAST) interiorJumps += 1
+        if (Math.abs(v - value(x + 1, y)) > CHECKER_CONTRAST) {
+          interiorJumps += 1
+          colHits[x]! += 1
+          colTotal += 1
+        }
       }
       if (y + 1 < iy1) {
         interiorPairs += 1
-        if (Math.abs(v - value(x, y + 1)) > CHECKER_CONTRAST) interiorJumps += 1
+        if (Math.abs(v - value(x, y + 1)) > CHECKER_CONTRAST) {
+          interiorJumps += 1
+          rowHits[y]! += 1
+          rowTotal += 1
+        }
       }
     }
+  }
+
+  // Share of an axis' transitions living in its densest CHECKER_TOP_FRACTION of coordinates.
+  const concentration = (hits: Float64Array, lo: number, hi: number, total: number): number => {
+    if (total <= 0) return 0
+    const sorted = Array.from(hits.subarray(lo, hi)).sort((a, b) => b - a)
+    const top = Math.max(1, Math.round(sorted.length * CHECKER_TOP_FRACTION))
+    let sum = 0
+    for (let i = 0; i < top; i += 1) sum += sorted[i]!
+    return sum / total
   }
 
   return {
@@ -205,5 +265,9 @@ export function analyzeMatte(matte: RawImage): MatteStats {
     roughness: pairs > 0 ? jumps / pairs : 0,
     borderAlpha: borderCount > 0 ? borderSum / borderCount / 255 : 0,
     checkerRatio: interiorPairs > 0 ? interiorJumps / interiorPairs : 0,
+    checkerRegularity: Math.min(
+      concentration(colHits, ix0, ix1, colTotal),
+      concentration(rowHits, iy0, iy1, rowTotal),
+    ),
   }
 }
