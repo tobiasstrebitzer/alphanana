@@ -20,9 +20,11 @@ const at = (dt, data) => {
   ev.push([Number(t.toFixed(3)), 'o', data])
 }
 
-at(0.30, `${AMBER}$ ${R}`)
+// The prompt lands at t=0 deliberately: a viewer whose browser restarts the animation on
+// scroll-into-view would otherwise be shown an empty terminal.
+at(0.0, `${AMBER}$ ${R}`)
 const cmd = 'alphanana generate "apothecary glass bottle, amber elixir" --out potion.png'
-at(0.35, TEXT)
+at(0.65, TEXT)
 for (const ch of cmd) at(0.026 + (ch === ' ' ? 0.02 : 0), ch) // slight hesitation on spaces
 at(0.55, `\r\n${R}`)
 
@@ -33,7 +35,7 @@ at(0.30, `${OK}        + alignment guard passed${R}\r\n`)
 at(0.45, `${STEP}> [3/3]${R} writing transparent PNG...\r\n`)
 at(0.60, `${OK}+ wrote potion.png${R}\r\n`)
 at(0.35, `${AMBER}$ ${R}`)
-at(2.60, '') // hold the final frame
+at(4.50, '') // long hold: most of the loop should sit on the finished run, not mid-typing
 
 const header = {
   version: 2,
