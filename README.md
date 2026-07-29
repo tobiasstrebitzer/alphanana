@@ -51,6 +51,10 @@ The bundled skill teaches Claude the whole pipeline — the prompting rules that
 matter, the config and manifest formats, and what to do when the guard trips. Asking
 Claude for "a set of game icons with real transparency" then just works.
 
+<div align="center">
+<img src="https://raw.githubusercontent.com/tobiasstrebitzer/alphanana/master/docs/demo-claude.svg" alt="asking Claude Code for a transparent asset: it picks the alphanana skill, runs the pipeline and reports the guard result" width="900">
+</div>
+
 ## Why
 
 Ask an image model for a transparent background and it paints the grey-and-white
@@ -218,14 +222,19 @@ Layout: `src/matte.ts` (the alpha solve and the guard statistics — the unit-te
 re-roll), `src/variants.ts` (candidates and contact sheets), `src/batch.ts` (manifests and
 the report), `src/config.ts` + `src/env.ts` (schema and key discovery), `src/cli.ts`.
 
-The README's terminal demo is a hand-authored asciicast rather than a real recording, so it
-stays reproducible without spending API calls. Regenerate it with:
+The README's terminal demos are hand-authored asciicasts rather than real recordings, so
+they stay reproducible without spending API calls. Regenerate with:
 
 ```sh
-node docs/make-cast.mjs                                   # writes docs/demo.cast
-npx svg-term-cli --in docs/demo.cast --out docs/demo.svg \
-  --width 92 --height 9 --padding 18                      # then set .a{fill:#0b0e1a}
+node docs/make-casts.mjs                        # writes both docs/*.cast
+npx svg-term-cli --in docs/demo.cast        --out docs/demo.svg        --width 92 --height 9  --padding 18
+npx svg-term-cli --in docs/demo-claude.cast --out docs/demo-claude.svg --width 92 --height 15 --padding 18
 ```
+
+Then set `.a{fill:#0b0e1a}` and `rx="10" ry="10"` on each SVG's background rect — svg-term
+has no flag for either. The casts avoid `⏺`/`⎿`: svg-term embeds no webfont, so glyphs
+resolve against the viewer's own monospace, and those codepoints are missing from most of
+them. `●` and `└` look the same and are universally available.
 
 Releases are automated: pushing a version bump to `master` publishes to npm through
 [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC — no tokens) with a
