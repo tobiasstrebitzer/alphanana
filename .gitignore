@@ -1,5 +1,11 @@
 node_modules/
 build/
 .env
+.env.*
+!.env.example
+*.pem
+*.key
 .DS_Store
 *.tgz
+.claude/
+.roam/
