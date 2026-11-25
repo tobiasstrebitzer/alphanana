@@ -3,6 +3,7 @@
   "owner": {
     "name": "Tobias Strebitzer"
   },
+  "description": "Game and app art with real alpha transparency, generated through the alphanana difference-matte pipeline.",
   "plugins": [
     {
       "name": "alphanana",
